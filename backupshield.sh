@@ -48,7 +48,7 @@ shift || true
 # Passphrase para el cifrado simétrico con GPG (en un entorno real se debería
 # almacenar de forma más segura, por ejemplo en un archivo externo o una variable
 # de entorno)
-GPG_PASSPHRASE="TuPassphraseSuperSecreta"
+GPG_PASSPHRASE="RKDSoft"
 
 #------------------------------------------------------------
 # Función: encrypt_file
