@@ -1,35 +1,45 @@
 #!/usr/bin/env bash
 #
-# backupshield.sh - Script para crear y gestionar respaldos (Full, Incremental, Cifrado) y restaurar un backup.
-#                   Ahora con subida remota (rclone) y notificaciones por correo (mailx).
+# backupshield.sh - Script para crear y gestionar respaldos con funcionalidades avanzadas.
 #
 # Autor: Ricardo Andres Bonilla Prada
 # Fecha: 2024-12-11
 #
-# Descripción:
-# Sprint 1: Respaldo local básico (Full).
-# Sprint 2: Backups incrementales y restauración.
-# Sprint 3: Cifrado GPG de los backups.
-# Sprint 4: Subida remota con rclone y notificaciones por correo.
+# Características por Sprint:
+# Sprint 1: Respaldo local básico (Full)
+# Sprint 2: Backups incrementales y restauración
+# Sprint 3: Cifrado GPG de los backups
+# Sprint 4: Subida remota con rclone y notificaciones por correo
+# Sprint 5: Menú interactivo y archivo de configuración externo
 #
-# Modo de uso:
-#   ./backupshield.sh [modo] [argumentos...]
+# Uso:
+#   ./backupshield.sh [modo] [args...]
 #
-# Modos:
-#   full [directorio_opcional]
-#       Crea un backup FULL del directorio especificado o del actual.
+# Modos disponibles (opcional):
+#   full [dir]          -> Crea backup full del directorio
+#   incremental [dir]   -> Crea backup incremental
+#   restore [archivo] [dir_destino] -> Restaura backup
+#   menu                -> Mostrar menú interactivo
 #
-#   incremental [directorio_opcional]
-#       Crea un backup INCREMENTAL del directorio, respaldando sólo cambios
-#       desde el último backup (full o incremental).
+# Si no se especifica modo, se muestra el menú interactivo.
 #
-#   restore [archivo_backup] [directorio_destino_opcional]
-#       Restaura el backup indicado en el directorio destino especificado o el actual.
-#
-# Si no se especifica modo, se asume 'full'.
 
 set -e
 set -u
+
+#------------------------------------------------------------
+# Cargar configuración externa
+#------------------------------------------------------------
+CONFIG_FILE="$(dirname "$0")/backupshield.conf"
+if [[ -f "$CONFIG_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$CONFIG_FILE"
+else
+  echo "No se encontró backupshield.conf. Usando valores por defecto."
+  GPG_PASSPHRASE="defaultpass"
+  REMOTE_NAME="myremote:backupfolder"
+  MAIL_TO="correo@ejemplo.com"
+fi
 
 #------------------------------------------------------------
 # Variables Globales
@@ -39,21 +49,11 @@ BACKUP_DIR="$(pwd)/backups"
 
 mkdir -p "$BACKUP_DIR"
 
-MODE="${1:-full}"
+MODE="${1:-menu}"
 shift || true
 
-# Passphrase GPG (Se recomienda externalizar en el futuro)
-GPG_PASSPHRASE="TuPassphraseSuperSecreta"
-
-# Configuración de remoto (rclone)
-REMOTE_NAME="myremote:backupfolder"
-
-# Destinatario de notificaciones
-MAIL_TO="correo@ejemplo.com"
-
 #------------------------------------------------------------
-# Función: encrypt_file
-# Cifra un archivo con GPG usando cifrado simétrico.
+# Funciones de cifrado
 #------------------------------------------------------------
 encrypt_file() {
   local FILE="$1"
@@ -62,10 +62,6 @@ encrypt_file() {
   echo "Archivo cifrado: ${FILE}.gpg"
 }
 
-#------------------------------------------------------------
-# Función: decrypt_file
-# Descifra un archivo .gpg a su versión sin cifrar.
-#------------------------------------------------------------
 decrypt_file() {
   local GPG_FILE="$1"
   local OUTPUT_FILE="${2:-${GPG_FILE%.gpg}}"
@@ -74,8 +70,7 @@ decrypt_file() {
 }
 
 #------------------------------------------------------------
-# Función: upload_remote
-# Sube el archivo especificado al remoto configurado usando rclone.
+# Función de subida remota
 #------------------------------------------------------------
 upload_remote() {
   local FILE="$1"
@@ -90,8 +85,7 @@ upload_remote() {
 }
 
 #------------------------------------------------------------
-# Función: send_notification
-# Envía una notificación por correo al finalizar el backup.
+# Función de notificación por correo
 #------------------------------------------------------------
 send_notification() {
   local MESSAGE="$1"
@@ -100,8 +94,7 @@ send_notification() {
 }
 
 #------------------------------------------------------------
-# Función: create_full_backup
-# Crea un backup full, lo cifra, sube a remoto y notifica por correo.
+# Crear backup full
 #------------------------------------------------------------
 create_full_backup() {
   local SRC_DIR="$1"
@@ -117,19 +110,14 @@ create_full_backup() {
   echo "Backup FULL creado exitosamente: ${BACKUP_PATH}"
   
   encrypt_file "$BACKUP_PATH"
-  # Ahora BACKUP_PATH sigue apuntando al .tar.gz (sin gpg). Actualizar ruta:
   BACKUP_PATH="${BACKUP_PATH}.gpg"
 
-  # Subir a remoto
   upload_remote "$BACKUP_PATH" || echo "Advertencia: No se pudo subir el archivo al remoto."
-
-  # Notificación por correo
   send_notification "Backup FULL completado: ${BACKUP_PATH} y subido al remoto."
 }
 
 #------------------------------------------------------------
-# Función: create_incremental_backup
-# Crea un backup incremental, lo cifra, sube a remoto y notifica.
+# Crear backup incremental
 #------------------------------------------------------------
 create_incremental_backup() {
   local SRC_DIR="$1"
@@ -149,13 +137,11 @@ create_incremental_backup() {
   BACKUP_PATH="${BACKUP_PATH}.gpg"
 
   upload_remote "$BACKUP_PATH" || echo "Advertencia: No se pudo subir el archivo al remoto."
-  
   send_notification "Backup INCREMENTAL completado: ${BACKUP_PATH} y subido al remoto."
 }
 
 #------------------------------------------------------------
-# Función: restore_backup
-# Restaura un backup. Si está cifrado, lo descifra primero.
+# Restaurar backup
 #------------------------------------------------------------
 restore_backup() {
   local BACKUP_FILE="$1"
@@ -178,6 +164,49 @@ restore_backup() {
 }
 
 #------------------------------------------------------------
+# Menú interactivo
+#------------------------------------------------------------
+show_menu() {
+  PS3="Seleccione una opción: "
+  local OPTS=("Crear Backup Full"
+              "Crear Backup Incremental"
+              "Restaurar Backup"
+              "Ver Archivos de Backup"
+              "Salir")
+  select OPT in "${OPTS[@]}"; do
+    case $REPLY in
+      1)
+        read -r -p "Ingrese el directorio a respaldar (ENTER para actual): " DIR
+        DIR="${DIR:-$(pwd)}"
+        create_full_backup "$DIR"
+        ;;
+      2)
+        read -r -p "Ingrese el directorio a respaldar (ENTER para actual): " DIR
+        DIR="${DIR:-$(pwd)}"
+        create_incremental_backup "$DIR"
+        ;;
+      3)
+        read -r -p "Ingrese el archivo de backup (.tar.gz.gpg): " BKP_FILE
+        read -r -p "Ingrese el directorio destino (ENTER para actual): " R_DIR
+        R_DIR="${R_DIR:-$(pwd)}"
+        restore_backup "$BKP_FILE" "$R_DIR"
+        ;;
+      4)
+        echo "Archivos de backup locales:"
+        ls -lh "${BACKUP_DIR}"
+        ;;
+      5)
+        echo "Saliendo del menú."
+        break
+        ;;
+      *)
+        echo "Opción inválida. Intente nuevamente."
+        ;;
+    esac
+  done
+}
+
+#------------------------------------------------------------
 # Flujo Principal
 #------------------------------------------------------------
 case "$MODE" in
@@ -185,12 +214,10 @@ case "$MODE" in
     SOURCE_DIR="${1:-$SOURCE_DIR}"
     create_full_backup "$SOURCE_DIR"
     ;;
-  
   incremental)
     SOURCE_DIR="${1:-$SOURCE_DIR}"
     create_incremental_backup "$SOURCE_DIR"
     ;;
-  
   restore)
     BACKUP_FILE="${1:-}"
     RESTORE_DIR="${2:-$(pwd)}"
@@ -200,10 +227,8 @@ case "$MODE" in
     fi
     restore_backup "$BACKUP_FILE" "$RESTORE_DIR"
     ;;
-  
-  *)
-    SOURCE_DIR="${1:-$SOURCE_DIR}"
-    create_full_backup "$SOURCE_DIR"
+  menu|*)
+    show_menu
     ;;
 esac
 
