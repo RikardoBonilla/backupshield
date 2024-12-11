@@ -1,83 +1,178 @@
 #!/usr/bin/env bash
 #
-# backupshield.sh - Script para realizar un respaldo local básico (Sprint 1)
+# backupshield.sh - Script para crear y gestionar respaldos (Full e Incremental) y restaurar de un backup.
 #
-# Autor: [Tu Nombre]
-# Fecha: [Fecha Actual]
+# Autor: Ricardo Andres Bonilla Prada
+# Fecha: 2024-12-11
 #
 # Descripción:
-# Este script toma un directorio (fuente) y crea un backup comprimido con tar y gzip,
-# guardándolo en el directorio 'backups'. Si no se proporciona un directorio fuente
-# como parámetro, se asume el directorio actual.
+# Sprint 1: Respaldo local básico (Full).
+# Sprint 2: Añade backups incrementales y la posibilidad de restaurar un backup.
 #
-# Uso:
-#   ./backupshield.sh [directorio_fuente_opcional]
+# Modo de uso:
+#   ./backupshield.sh [modo] [argumentos...]
 #
-# Ejemplo:
-#   ./backupshield.sh /home/usuario/documentos
-# Si no se especifica, por defecto: ./backupshield.sh  (usará el directorio actual)
+# Modos:
+#   full [directorio_opcional]
+#       Crea un backup FULL del directorio especificado o del actual.
+#
+#   incremental [directorio_opcional]
+#       Crea un backup INCREMENTAL del directorio, respaldando sólo cambios
+#       desde el último backup (full o incremental).
+#
+#   restore [archivo_backup] [directorio_destino_opcional]
+#       Restaura el backup indicado en el directorio destino especificado o el actual.
+#
+# Si no se especifica modo, se asume 'full'.
 
-set -e  # Detener el script si ocurre un error
-set -u  # Detener si se usan variables sin definir
+set -e  # Detiene el script si un comando devuelve un error.
+set -u  # Detiene si se intenta usar una variable no inicializada.
 
 #------------------------------------------------------------
 # Variables Globales
 #------------------------------------------------------------
-SOURCE_DIR="${1:-$(pwd)}"   # Directorio fuente, por defecto el actual
-BACKUP_DIR="$(pwd)/backups" # Directorio donde se guardan los backups
+# Directorio por defecto si no se especifica en full/incremental.
+SOURCE_DIR="$(pwd)"
+
+# Directorio donde se guardan los backups
+BACKUP_DIR="$(pwd)/backups"
 
 # Crear el directorio de backups si no existe
 mkdir -p "$BACKUP_DIR"
 
+# Modo de operación (full, incremental, restore)
+MODE="${1:-full}"
+
+# Shift del primer argumento para procesar los siguientes de manera uniforme si se desea.
+# Aunque en este caso no es estrictamente necesario, se puede dejar así.
+shift || true
+
 #------------------------------------------------------------
-# Función: create_backup
-# Descripción:
-#   Crea un archivo de respaldo .tar.gz del directorio fuente especificado.
-#   El nombre del backup incluirá la fecha y hora para ser único.
+# Función: create_full_backup
+# Crea un backup total (.tar.gz) del directorio fuente.
 #
 # Parámetros:
-#   $1 - Directorio fuente (obligatorio)
+#   $1: Directorio fuente a respaldar
 #
 # Salida:
-#   Crea un archivo en BACKUP_DIR con el nombre backup_YYYYMMDD_HHMMSS.tar.gz
-#   Imprime un mensaje indicando el resultado.
+#   Crea un archivo backup_full_YYYYMMDD_HHMMSS.tar.gz en BACKUP_DIR
 #------------------------------------------------------------
-create_backup() {
+create_full_backup() {
   local SRC_DIR="$1"
   
-  # Obtener fecha en formato YYYYMMDD_HHMMSS para el nombre del backup
+  # Obtener la fecha y hora en formato YYYYMMDD_HHMMSS
   local DATE_STR
   DATE_STR=$(date +%Y%m%d_%H%M%S)
 
-  # Nombre del archivo de backup
-  local BACKUP_FILE="backup_${DATE_STR}.tar.gz"
+  # Nombre del archivo de backup full
+  local BACKUP_FILE="backup_full_${DATE_STR}.tar.gz"
 
-  # Ruta completa del archivo de backup
+  # Ruta completa al archivo de backup
   local BACKUP_PATH="${BACKUP_DIR}/${BACKUP_FILE}"
 
-  echo "Creando backup de: ${SRC_DIR}"
+  echo "Creando backup FULL de: ${SRC_DIR}"
   echo "Guardando en: ${BACKUP_PATH}"
 
-  # Crear el archivo tar comprimido con gzip
-  # -c: crear
-  # -z: comprimir con gzip
-  # -f: nombre del archivo
-  # -C: cambiar al directorio especificado antes de agregar archivos
-  # Asumimos que se quiere respaldar el contenido del directorio, no el directorio en sí.
-  # Si se quiere incluir el directorio en la ruta del backup, ajustar el comando.
+  # Crear el backup full con tar y gzip
   tar -czf "$BACKUP_PATH" -C "$SRC_DIR" .
 
-  echo "Backup creado exitosamente: ${BACKUP_PATH}"
+  echo "Backup FULL creado exitosamente: ${BACKUP_PATH}"
+}
+
+#------------------------------------------------------------
+# Función: create_incremental_backup
+# Crea un backup incremental usando tar con --listed-incremental.
+#
+# Parámetros:
+#   $1: Directorio fuente a respaldar
+#
+# Notas:
+# - Usa ${BACKUP_DIR}/snapshot.snar para determinar qué se ha modificado.
+# - Si no existía snapshot.snar, este primer incremental actuará como un full.
+#
+# Salida:
+#   Crea un archivo backup_incremental_YYYYMMDD_HHMMSS.tar.gz en BACKUP_DIR
+#------------------------------------------------------------
+create_incremental_backup() {
+  local SRC_DIR="$1"
+  
+  # Obtener fecha y hora
+  local DATE_STR
+  DATE_STR=$(date +%Y%m%d_%H%M%S)
+
+  # Nombre del archivo incremental
+  local BACKUP_FILE="backup_incremental_${DATE_STR}.tar.gz"
+  local BACKUP_PATH="${BACKUP_DIR}/${BACKUP_FILE}"
+
+  echo "Creando backup INCREMENTAL de: ${SRC_DIR}"
+  echo "Guardando en: ${BACKUP_PATH}"
+
+  # Crear el backup incremental
+  # --listed-incremental requiere un archivo snapshot para saber qué cambió.
+  #   tar --listed-incremental="${BACKUP_DIR}/snapshot.snar" -czf "$BACKUP_PATH" -C "$SRC_DIR" .
+  gtar --listed-incremental="${BACKUP_DIR}/snapshot.snar" -czf "$BACKUP_PATH" -C "$SRC_DIR" .
+
+  echo "Backup INCREMENTAL creado exitosamente: ${BACKUP_PATH}"
+  echo "Nota: Si no existía snapshot.snar, este backup será igual a un full inicial."
+}
+
+#------------------------------------------------------------
+# Función: restore_backup
+# Restaura un backup a un directorio destino.
+#
+# Parámetros:
+#   $1: Archivo de backup (tar.gz)
+#   $2: Directorio destino (opcional, por defecto el actual)
+#
+# Salida:
+#   Extrae el contenido del backup en el directorio destino.
+#------------------------------------------------------------
+restore_backup() {
+  local BACKUP_FILE="$1"
+  local RESTORE_DIR="${2:-$(pwd)}"
+
+  echo "Restaurando desde: $BACKUP_FILE"
+  echo "Hacia el directorio: $RESTORE_DIR"
+
+  mkdir -p "$RESTORE_DIR"
+  tar -xzf "$BACKUP_FILE" -C "$RESTORE_DIR"
+  
+  echo "Restauración completada."
 }
 
 #------------------------------------------------------------
 # Flujo Principal
+# Aquí interpretamos el modo (full/incremental/restore) y llamamos a la función correspondiente.
 #------------------------------------------------------------
-echo "Iniciando BackupShield - Sprint 1"
-echo "Directorio fuente: $SOURCE_DIR"
-echo "Directorio de backups: $BACKUP_DIR"
-
-# Crear el backup
-create_backup "$SOURCE_DIR"
+case "$MODE" in
+  full)
+    # Si se pasa un segundo argumento tras 'full' será el directorio fuente.
+    SOURCE_DIR="${1:-$SOURCE_DIR}"
+    create_full_backup "$SOURCE_DIR"
+    ;;
+  
+  incremental)
+    # Segundo argumento es el directorio fuente para incremental
+    SOURCE_DIR="${1:-$SOURCE_DIR}"
+    create_incremental_backup "$SOURCE_DIR"
+    ;;
+  
+  restore)
+    # Para restore, $1 es el archivo de backup, $2 el directorio destino
+    BACKUP_FILE="${1:-}"
+    RESTORE_DIR="${2:-$(pwd)}"
+    if [[ -z "$BACKUP_FILE" ]]; then
+      echo "Debe especificar el archivo de backup a restaurar."
+      exit 1
+    fi
+    restore_backup "$BACKUP_FILE" "$RESTORE_DIR"
+    ;;
+  
+  *)
+    # Modo no reconocido, usar full por defecto
+    SOURCE_DIR="${1:-$SOURCE_DIR}"
+    create_full_backup "$SOURCE_DIR"
+    ;;
+esac
 
 echo "Proceso finalizado."
