@@ -1,163 +1,161 @@
 # BackupShield
 
-**Autor:** Ricardo Andres Bonilla Prada  
-**Fecha:** 2024-12-11
+BackupShield es un script en Bash que proporciona una solución integral para la creación, cifrado, gestión, restauración y notificación de respaldos (backups) locales y remotos. El proyecto se ha desarrollado gradualmente a lo largo de varios sprints, agregando funcionalidades en cada etapa, y culmina con una interfaz de menú interactivo y un archivo de configuración externo.
 
-**Descripción General:**  
-BackupShield es una solución en Bash para la creación, gestión y restauración de respaldos (backups) con funcionalidades avanzadas. Su objetivo es permitir a los usuarios realizar respaldos totales o incrementales de sus datos, cifrarlos para mayor seguridad, subirlos a un servicio remoto en la nube y notificar por correo electrónico el resultado, todo esto configurado mediante un archivo externo y controlado por medio de un menú interactivo.
+## Funcionalidades por Sprint
 
-## Características por Sprint
+- **Sprint 1:** Respaldo local básico (Full)  
+  - Crear un backup `.tar.gz` de un directorio fuente.  
+  - Guardar el backup en el directorio `backups/`.  
+  - Código limpio y documentado.
 
-- **Sprint 1:**  
-  - Respaldo local básico (Full) usando `tar` y `gzip`.
-  - Generación de archivos `.tar.gz` en el directorio `backups`.
+- **Sprint 2:** Backups incrementales y restauración  
+  - Añadir respaldos incrementales utilizando GNU tar (`gtar`) con `--listed-incremental`.  
+  - Restaurar backups a un directorio destino.  
+  - Mantener versión incrementales y full de los backups.
 
-- **Sprint 2:**  
-  - Añadido backups incrementales usando `gtar` con `--listed-incremental`.
-  - Posibilidad de restaurar un backup a un directorio específico.
+- **Sprint 3:** Cifrado GPG de los backups  
+  - Cifrar los backups `.tar.gz` en `.tar.gz.gpg` usando GPG y una passphrase.  
+  - Desencriptar al restaurar, ofreciendo mayor seguridad en reposo.
 
-- **Sprint 3:**  
-  - Integración con GPG para cifrar los backups (`.tar.gz.gpg`).
-  - Descifrado automático durante la restauración.
+- **Sprint 4:** Subida remota con rclone y notificaciones por correo  
+  - Subir los backups cifrados a un servicio remoto configurado en `rclone`.  
+  - Enviar notificaciones por correo electrónico (`mailx`) al completar el respaldo.  
+  - Ahora los backups están seguros, redundantes y se notifica al responsable cuando se completan.
 
-- **Sprint 4:**  
-  - Subida remota de los backups cifrados a la nube usando `rclone`.
-  - Notificaciones por correo electrónico (usando `mailx`) al completar el backup.
-
-- **Sprint 5:**  
-  - Lectura de configuración desde un archivo externo (`backupshield.conf`) para no hardcodear valores críticos.
-  - Menú interactivo mediante el cual el usuario puede seleccionar opciones sin necesidad de parámetros en la línea de comandos.
+- **Sprint 5:** Menú interactivo y archivo de configuración externo  
+  - Configurar parámetros (passphrase, destino remoto, correo) en un archivo de configuración externo `backupshield.conf`.  
+  - Menú interactivo en la terminal para crear Full, Incremental, Restaurar, Ver backups y Salir.  
+  - Con este menú no es necesario recordar los comandos; el usuario puede seleccionar la opción deseada.
 
 ## Requisitos y Dependencias
 
-1. **Bash:**  
-   Asegúrate de tener Bash 4.0 o superior (en macOS se recomienda instalar con Homebrew).
+1. **Bash 4+:**  
+   Asegúrese de usar Bash 4 o superior. En macOS, la versión por defecto es antigua; se recomienda instalar Bash vía `brew install bash` y ajustar el `#!/usr/bin/env bash` si es necesario.
 
-2. **Herramientas de compresión y tar:**
-   - `tar` (en macOS utilizar `gtar` instalado vía `brew install gnu-tar` para backups incrementales).
-   - `gzip` (normalmente incluido en macOS/Linux por defecto).
+2. **GNU tar (gtar):**  
+   En macOS, instale `gtar` para soportar `--listed-incremental`:  
+   ```bash
+   brew install gnu-tar
+   ```
+   En Linux la mayoría de las distribuciones incluyen GNU tar por defecto.
 
 3. **GPG:**  
-   Para cifrar y descifrar los backups:  
+   Necesario para cifrar y descifrar backups:  
    ```bash
    brew install gnupg  # macOS
-   sudo apt-get install gnupg  # Debian/Ubuntu
+   sudo apt-get install gnupg   # Debian/Ubuntu Linux
    ```
 
 4. **rclone:**  
-   Para subir los backups remotos:  
+   Para subir backups a un remoto (S3, GDrive, etc.):  
    ```bash
-   brew install rclone  # macOS
+   brew install rclone   # macOS
    sudo apt-get install rclone  # Debian/Ubuntu
    ```
-   Configurar un remoto con `rclone config` antes de usar BackupShield.
+   Luego configurar `rclone config` para crear un remoto, por ejemplo `myremote:`.
 
-5. **mailx (o equivalente):**  
+5. **mailx (o mailutils):**  
    Para enviar notificaciones por correo:  
-   - En macOS se puede usar `mailx` vía:
-     ```bash
-     brew install mailutils
-     ```
-   - En Linux:
-     ```bash
-     sudo apt-get install mailutils
-     ```
-   Configurar `mailx`/`sendmail` según tu entorno.
+   ```bash
+   brew install mailutils   # macOS con Homebrew
+   sudo apt-get install mailutils  # Debian/Ubuntu
+   ```
+   Configurar SMTP si es necesario.
 
-6. **GPG Passphrase / Llaves:**  
-   Si se usa cifrado simétrico, define una passphrase en `backupshield.conf`.
-   Asegúrate de manejar la passphrase de forma segura.
-
-7. **Archivo de Configuración `backupshield.conf`:**
-   Crear un archivo `backupshield.conf` en el mismo directorio que `backupshield.sh`:
+6. **Archivo de configuración `backupshield.conf`:**  
+   Crear un archivo en el mismo directorio que `backupshield.sh` con:  
    ```bash
    # backupshield.conf
    GPG_PASSPHRASE="TuPassphraseSuperSecreta"
    REMOTE_NAME="myremote:backupfolder"
-   MAIL_TO="tucorreo@ejemplo.com"
+   MAIL_TO="correo@ejemplo.com"
    ```
-   
-   Ajustar las variables según tu entorno:
-   - `GPG_PASSPHRASE`: Passphrase para cifrar backups.
-   - `REMOTE_NAME`: Remoto configurado con rclone (ej. `myremote:carpeta`).
-   - `MAIL_TO`: Dirección de correo a la que se enviarán notificaciones.
+   Ajustar los valores según su entorno.
 
-8. **Directorio de Backups:**
-   El script creará automáticamente el directorio `backups/` en el directorio actual.
+## Instalación
 
-## Uso del Proyecto
-
-1. **Clonar el repositorio (si aplica)**:
+1. Clonar el repositorio:  
    ```bash
-   git clone https://github.com/RikardoBonilla/backupshield.git
-   cd backupshield
+   git clone https://github.com/RikardoBonilla/ecoclean.git
+   cd ecoclean/backupshield
    ```
 
-2. **Dar permisos de ejecución:**
+2. Dar permisos de ejecución al script:  
    ```bash
    chmod +x backupshield.sh
    ```
 
-3. **Editar el archivo de configuración `backupshield.conf`:**
-   Ajusta las variables a tu entorno (passphrase, remoto, correo).
+3. Crear el archivo de configuración `backupshield.conf` (ver ejemplo arriba).
 
-4. **Ejecutar el menú interactivo:**
+4. Crear el directorio `backups/`:  
+   ```bash
+   mkdir -p backups
+   ```
+
+## Uso
+
+Hay dos formas de usar `backupshield.sh`:
+
+1. **Menú Interactivo (sin argumentos):**
    ```bash
    ./backupshield.sh
    ```
-   
-   Aparecerá un menú con las siguientes opciones:
+   Aparecerá un menú:
    ```
    1) Crear Backup Full
    2) Crear Backup Incremental
    3) Restaurar Backup
    4) Ver Archivos de Backup
    5) Salir
+   Seleccione una opción:
    ```
 
-5. **Crear un Backup Full:**
-   Selecciona la opción `1`. Ingresa el directorio a respaldar (ENTER para actual). Se creará el backup, se cifrará, se subirá al remoto y se enviará una notificación por correo.
+   Seleccione la opción deseada y siga las instrucciones en pantalla.
 
-6. **Crear un Backup Incremental:**
-   Selecciona la opción `2`. Similar al Full, pero sólo se respaldan cambios desde el último backup.
+2. **Modo por Argumentos:**
+   ```bash
+   ./backupshield.sh full [directorio_opcional]
+   ./backupshield.sh incremental [directorio_opcional]
+   ./backupshield.sh restore [archivo_backup] [directorio_destino_opcional]
+   ./backupshield.sh menu
+   ```
+   
+   Si no se proporciona modo, se mostrará el menú por defecto.
 
-7. **Restaurar un Backup:**
-   Selecciona la opción `3`. Ingresa el archivo de backup (ej. `backups/backup_full_20241211_153000.tar.gz.gpg`) y el directorio destino. El script descifrará y extraerá el contenido.
+## Ejemplo de Flujo
 
-8. **Ver Archivos de Backup Locales:**
-   Selecciona la opción `4`. Listará los archivos en el directorio `backups/`.
+- **Backup Full Interactivo:**
+  1. `./backupshield.sh`
+  2. Seleccionar `1) Crear Backup Full`
+  3. Dejar el directorio en blanco para usar el actual o ingresar otro.
+  4. Se crea el backup, se cifra, se sube al remoto y se envía un correo a `MAIL_TO`.
 
-9. **Salir:**
-   Selecciona la opción `5`.
+- **Backup Incremental por Argumentos:**
+  ```bash
+  ./backupshield.sh incremental /path/a/respaldar
+  ```
+  Crear un backup incremental. Si no existe `snapshot.snar` se comportará como un full inicial.
 
-## Ejecución Vía Línea de Comandos (Opcional)
+- **Restaurar:**
+  ```bash
+  ./backupshield.sh restore backups/backup_full_20241211_123456.tar.gz.gpg /ruta/de/restauracion
+  ```
+  Descifra el backup, lo extrae y luego elimina el tar.gz temporal.
 
-Puedes seguir usando los modos originales sin menú si lo deseas:  
-- `./backupshield.sh full /ruta/al/directorio`  
-- `./backupshield.sh incremental /ruta/al/directorio`  
-- `./backupshield.sh restore /ruta/al/backup.tar.gz.gpg /ruta/destino`
+## Posibles Mejoras Futuras
 
-## Posibles Problemas y Soluciones
+1. **Soporte para múltiples perfiles de configuración:**  
+   Poder especificar un archivo de configuración alternativo (ej: `backupshield.sh --config work.conf`) para usar diferentes destinos o llaves GPG según el entorno (trabajo, personal, cliente X).
 
-- **No se encuentra `gtar`:**  
-  Instalar con `brew install gnu-tar` en macOS y usar `gtar` en lugar de `tar` en el script (ya implementado en el código).
-  
-- **No se puede enviar correo:**  
-  Asegurar configuración SMTP o postfix. Puedes probar enviarte un correo con `echo "test" | mailx -s "Test" tu@correo.com` antes de usar BackupShield.
+2. **Programación Automática de Backups (Cron / systemd timers):**  
+   Añadir una función para programar la ejecución automática de backups full o incrementales en horarios específicos desde el menú interactivo.
 
-- **No se puede subir al remoto con rclone:**  
-  Ejecutar `rclone config` y verificar que `REMOTE_NAME` esté correctamente definido.
+3. **Reportes HTML o PDF Detallados:**  
+   Generar reportes (HTML/PDF) con información del tamaño de backups, históricos, y estadísticas de versiones. Esto haría más amigable la visualización del historial de respaldos.
 
-- **Cifrado falla:**  
-  Asegurar que GPG esté instalado y `GPG_PASSPHRASE` definido en `backupshield.conf`.
+4. **Soporte para múltiples destinos remotos:**  
+   Permitir subir el backup a más de un remoto (ej. S3 y Google Drive simultáneamente), reforzando la redundancia.
 
-## Futuras Mejoras
-
-- Integrar llaves asimétricas con GPG en vez de cifrado simétrico.
-- Añadir más perfiles de configuración y selección de ellos desde el menú.
-- Añadir logs más detallados en un archivo externo.
-- Integrar notificaciones más avanzadas (Slack, Telegram, etc.).
-
-## Licencia
-
-Este proyecto puede ser adaptado o distribuido según se requiera (seleccionar una licencia, p. ej. MIT, GPL).
+5. **Integración con llaves GPG asimétricas:**  
+   En lugar de usar cifrado simétrico con passphrase, usar llaves públicas/privadas GPG sin interacción, permitiendo distribuir la llave pública a múltiples entornos y descifrar sólo con la llave privada, aumentando la seguridad y flexibilidad.
